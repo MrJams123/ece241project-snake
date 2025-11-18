@@ -1,0 +1,44 @@
+# vsim -pli "C:\DESim\modelsim.vpi" -Lf 220model -Lf altera_mf_ver -Lf verilog -t 1ns -c -do "run -all" tb 
+# Start time: 13:08:55 on Nov 18,2025
+# Loading work.tb
+# Loading work.top
+# Loading work.vga_demo
+# Loading work.sync
+# Loading work.half_second_counter
+# Loading work.snake_game_fsm
+# Loading work.hex_decoder
+# ** Warning: (vsim-3013) A parameter override is not allowed for localparam 'tb.DUT.U1.RESOLUTION'.
+#    Time: 0 ns  Iteration: 0  Instance: /tb/DUT File: ../top.v
+# ** Warning: (vsim-3013) A parameter override is not allowed for localparam 'tb.DUT.U1.COLOR_DEPTH'.
+#    Time: 0 ns  Iteration: 0  Instance: /tb/DUT File: ../top.v
+# ** Warning: (vsim-3013) A parameter override is not allowed for localparam 'tb.DUT.U1.RESOLUTION'.
+#    Time: 0 ns  Iteration: 0  Instance: /tb/DUT File: ../top.v
+# ** Warning: (vsim-3013) A parameter override is not allowed for localparam 'tb.DUT.U1.COLOR_DEPTH'.
+#    Time: 0 ns  Iteration: 0  Instance: /tb/DUT File: ../top.v
+# ** Warning: (vsim-3017) ../tb/tb.v(46): [TFMPC] - Too few port connections. Expected 22, found 14.
+#    Time: 0 ns  Iteration: 0  Instance: /tb/DUT File: ../top.v
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_R'.
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_G'.
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_B'.
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_HS'.
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_VS'.
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_BLANK_N'.
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_SYNC_N'.
+# ** Warning: (vsim-3722) ../tb/tb.v(46): [TFMPC] - Missing connection for port 'VGA_CLK'.
+# ** Warning: (vsim-3017) ../top.v(58): [TFMPC] - Too few port connections. Expected 14, found 12.
+#    Time: 0 ns  Iteration: 0  Instance: /tb/DUT/U1 File: ../snake.v
+# ** Warning: (vsim-3722) ../top.v(58): [TFMPC] - Missing connection for port 'HEX0'.
+# ** Warning: (vsim-3722) ../top.v(58): [TFMPC] - Missing connection for port 'HEX1'.
+# Loading C:\DESim\modelsim.vpi
+# run -all
+# Time scaling: 0.0001 sim seconds per real-time second
+# 
+# 
+# Connected to server!
+# Could not send VGA signal to GUI
+# ** Note: $finish    : ../tb/tb.v(24)
+#    Time: 2084310 ns  Iteration: 2  Instance: /tb
+# 
+# Quitting...
+# End time: 13:09:09 on Nov 18,2025, Elapsed time: 0:00:14
+# Errors: 0, Warnings: 16
