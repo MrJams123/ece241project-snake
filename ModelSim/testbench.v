@@ -2,7 +2,7 @@
 `default_nettype none
 `define SIMULATION
 
-module snake_tb();
+module testbench();
 
    // --------------------------------------------------------------
    // DUT ports (top)
@@ -70,51 +70,40 @@ module snake_tb();
       $display("\n=== SNAKE KEY-PRESS DEMO ===\n");
       SW = 0; KEY = 4'b1111;   // everything released
 
-      // ---- 1. Reset ------------------------------------------------
-      press_reset;               // KEY[0] low for 800 ns
+            press_reset;
       #1000;
-      assert(dut.U1.SNAKE.state===0) else $error("INIT failed");
+      if (dut.U1.SNAKE.state !== 0) $error("INIT failed");
 
-      // ---- 2. Set green colour ------------------------------------
       set_color(9'b000_111_000);
-      assert(dut.U1.SNAKE.color===9'b000_111_000) else $error("colour failed");
+      if (dut.U1.SNAKE.color !== 9'b000_111_000) $error("colour failed");
 
-      // ---- 3. Let it move RIGHT a few steps (default) ------------
       $display("%0t ns  Letting snake move RIGHT (default)...", $time);
       wait_ticks(4);
 
-      // ---- 4. UP ---------------------------------------------------
-      press_up;                  // KEY[1] low for 800 ns
-      wait_ticks(1);             // one move while key is still low
-      assert(dut.U1.SNAKE.direction===2'b11) else $error("UP failed");
-
-      // ---- 5. DOWN (illegal 180°) ----------------------------------
-      press_down;                // KEY[2] low for 800 ns
-      #2000;                     // wait a bit – direction must stay UP
-      assert(dut.U1.SNAKE.direction===2'b11) else $error("180° allowed!");
-
-      // ---- 6. LEFT -------------------------------------------------
-      press_left;                // KEY[3] low for 800 ns
+      press_up;
       wait_ticks(1);
-      assert(dut.U1.SNAKE.direction===2'b01) else $error("LEFT failed");
+      if (dut.U1.SNAKE.direction !== 2'b11) $error("UP failed");
 
-      // ---- 7. DOWN (now legal) ------------------------------------
+      press_down;
+      #2000;
+      if (dut.U1.SNAKE.direction !== 2'b11) $error("180° allowed!");
+
+      press_left;
+      wait_ticks(1);
+      if (dut.U1.SNAKE.direction !== 2'b01) $error("LEFT failed");
+
       press_down;
       wait_ticks(1);
-      assert(dut.U1.SNAKE.direction===2'b10) else $error("DOWN failed");
+      if (dut.U1.SNAKE.direction !== 2'b10) $error("DOWN failed");
 
-      // ---- 8. RIGHT via SW[0] --------------------------------------
-      $display("%0t ns  Using SW[0] for RIGHT...", $time);
       SW[0] = 1; #1000; SW[0] = 0;
       wait_ticks(1);
-      assert(dut.U1.SNAKE.direction===2'b00) else $error("SW[0] failed");
+      if (dut.U1.SNAKE.direction !== 2'b00) $error("SW[0] failed");
 
-      // ---- 9. Wrap-around demo ------------------------------------
-      $display("%0t ns  Forcing wrap-around...", $time);
-      force dut.U1.SNAKE.body_x[0] = 156;   // edge of screen
+      force dut.U1.SNAKE.body_x[0] = 156;
       wait_ticks(1);
       release dut.U1.SNAKE.body_x[0];
-      assert(dut.U1.SNAKE.body_x[0]===0) else $error("wrap-around failed");
+      if (dut.U1.SNAKE.body_x[0] !== 0) $error("wrap-around failed");
 
       $display("\n=== DEMO FINISHED – CHECK WAVEFORM ===\n");
       #5000 $finish;

@@ -1,25 +1,18 @@
-# =============================================================
-#  testbench.tcl – ModelSim/Questa simulation script
-#  Works with: vga_demo.v  +  top.v  +  testbench.v
-#  Hierarchy: /snake_tb/dut  =  top
-# =============================================================
-
-# ---------- 1. Clean work ----------
-if {[file exists work]} { vdel -lib work -all }
+# Clean start
+quit -sim
 vlib work
 vmap work work
 
-# ---------- 2. Compile ----------
-vlog -sv \
-    ../vga_demo.v \
-    top.v \
-    testbench.v
+# Compile everything in correct order
+vlog ../snake.v          # your big file with all modules inside
+vlog top.v               # the new wrapper above
+vlog testbench.v         # your renamed snake_tb → testbench
 
-# ---------- 3. Load testbench ----------
-vsim -voptargs=+acc work.snake_tb
+# Launch simulation
+vsim -voptargs=+acc work.testbench -Lf 220model -Lf altera_mf_ver -Lf verilog
 
-# ---------- 4. Waveform ----------
+# Waveform (if you have wave.do)
 do wave.do
 
-# ---------- 5. Run ----------
+# Run forever (your testbench finishes itself)
 run -all
