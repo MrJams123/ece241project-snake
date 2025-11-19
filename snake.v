@@ -1,15 +1,3 @@
-// -----------------------
-// VERSION 2025-11-18
-// -----------------------
-// for DE1-SoC
-// ----------------------
-// to do:
-// * background image
-// * game over image
-// start game image
-// switch reset to spacebar
-// --------------------------
-
 module snake (
     input wire CLOCK_50,
     input wire [9:0] SW,
@@ -118,7 +106,10 @@ module snake (
         .VGA_SYNC_N(VGA_SYNC_N),
         .VGA_CLK(VGA_CLK));
    
-    defparam VGA.BACKGROUND_IMAGE = "./MIF/background_640x480.mif";
+    defparam VGA.RESOLUTION = "160x120";
+    defparam VGA.MONOCHROME = "FALSE";
+    defparam VGA.BITS_PER_COLOUR_CHANNEL = 3;
+    defparam VGA.BACKGROUND_IMAGE = "./MIF/background.mif";
 
     // 50 MHz → 25 MHz pixel clock
     always @(posedge CLOCK_50) pixel_clk <= ~pixel_clk;
@@ -307,7 +298,7 @@ module half_second_counter (input wire clock, resetn, output wire tick);
     `ifdef SIMULATION
         localparam MAX_COUNT = 10 - 1;
     `else
-        localparam MAX_COUNT = 25000000;
+        localparam MAX_COUNT = 15000000;
     `endif
 
     reg [24:0] count = MAX_COUNT;
@@ -345,15 +336,14 @@ module snake_game_fsm (
     localparam FOOD_SIZE = 4;
     localparam VGA_WIDTH = 640, VGA_HEIGHT = 480;
     localparam SCALE = 4;
-    localparam SNAKE_COLOR = 9'b000_001_000;  // White
+    localparam SNAKE_COLOR = 9'b000_010_000;  // Green
     localparam FOOD_COLOR = 9'b111_000_000;   // Red
     localparam BG_COLOR = 9'b0;
     localparam MAX_SNAKE_LENGTH = 64;  // Maximum possible snake length
 
-    localparam INIT=0, CLEAR_SCREEN=1, CLEAR_SCREEN_DONE=2, WAIT=3,
-               CHECK_COLLISION=4, ERASE_TAIL=5, ERASE_DONE=6, MOVE=7,
-               DRAW_HEAD=8, DRAW_DONE=9, DRAW_FOOD=10, DRAW_FOOD_DONE=11,
-               ERASE_FOOD=12, ERASE_FOOD_DONE=13, GAME_OVER_STATE=14;
+    localparam INIT=0, WAIT=1, CHECK_COLLISION=2, ERASE_TAIL=3, ERASE_DONE=4, MOVE=5,
+               DRAW_HEAD=6, DRAW_DONE=7, DRAW_FOOD=8, DRAW_FOOD_DONE=9,
+               ERASE_FOOD=10, ERASE_FOOD_DONE=11, GAME_OVER_STATE=12;
     localparam DIR_RIGHT=0, DIR_LEFT=1, DIR_DOWN=2, DIR_UP=3;
      
     reg [7:0] body_x [0:MAX_SNAKE_LENGTH-1];
@@ -432,31 +422,9 @@ module snake_game_fsm (
             VGA_write <= 0;
         end else case (state)
             INIT: begin
-                state <= CLEAR_SCREEN;
-                pixel_x <= 0; pixel_y <= 0;
-            end
-                       
-            CLEAR_SCREEN: begin
-                VGA_x <= pixel_x;
-                VGA_y <= pixel_y;
-                VGA_color <= BG_COLOR;
-                VGA_write <= 1;
-               
-                if (pixel_x == VGA_WIDTH-1) begin
-                    pixel_x <= 0;
-                    if (pixel_y == VGA_HEIGHT-1)
-                        state <= CLEAR_SCREEN_DONE;
-                    else
-                        pixel_y <= pixel_y + 1;
-                end else
-                    pixel_x <= pixel_x + 1;
-            end
-           
-            CLEAR_SCREEN_DONE: begin
-                VGA_write <= 0;
+                // Skip screen clearing - let background show through
                 state <= DRAW_FOOD;
-                pixel_x <= 0;
-                pixel_y <= 0;
+                pixel_x <= 0; pixel_y <= 0;
             end
            
             DRAW_FOOD: begin
@@ -477,7 +445,7 @@ module snake_game_fsm (
            
             DRAW_FOOD_DONE: begin
                 VGA_write <= 0;
-                food_eaten <= 0; // jw - change food_eaten to 0 after drawing food
+                food_eaten <= 0;
                 state <= DRAW_HEAD;
                 pixel_x <= 0; pixel_y <= 0;
                 draw_segment <= 0;
@@ -520,10 +488,7 @@ module snake_game_fsm (
                     end
                 endcase
                
-                // ===== CHANGE 1: Fixed loop bounds to prevent index 64 access =====
-                // Check self-collision (head hitting body)
-                // OLD: for (i = 1; i < SNAKE_LENGTH; i = i + 1)
-                // NEW: for (i = 1; i < MAX_SNAKE_LENGTH; i = i + 1) with condition
+        
                 if (!collision) begin
                     for (i = 1; i < MAX_SNAKE_LENGTH; i = i + 1) begin
                         if (i < snake_length && next_x == body_x[i] && next_y == body_y[i]) begin
@@ -531,14 +496,14 @@ module snake_game_fsm (
                         end
                     end
                 end
-                // ===== END CHANGE 1 =====
                
-                // Check collision with food
+                
                 if (collision) begin
                     game_over <= 1;
                     state <= GAME_OVER_STATE;
                 end else begin
-                    if (next_x == food_x && next_y == food_y) begin // jw - fixed food collision
+                    // Check collision with food
+                    if (next_x == food_x && next_y == food_y) begin
                         food_eaten <= 1;
                         state <= ERASE_FOOD;
                     end else begin  
@@ -574,7 +539,7 @@ module snake_game_fsm (
                 food_x <= (lfsr[7:0] % (XSCREEN / SNAKE_SIZE)) * SNAKE_SIZE;
                 food_y <= (lfsr[14:8] % (YSCREEN / SNAKE_SIZE)) * SNAKE_SIZE;
                              
-                state <= MOVE; // jw - changed from ERASE_TAIL -> MOVE (grow; skip tail erase)
+                state <= MOVE;
             end
            
             ERASE_TAIL: begin
@@ -590,11 +555,8 @@ module snake_game_fsm (
             end
            
             ERASE_DONE: begin VGA_write <= 0; state <= MOVE; end
-           
-            // ===== CHANGE 2: Fixed MOVE loop to prevent index 64 access =====
+
             MOVE: begin
-                // OLD: for (i = SNAKE_LENGTH-1; i > 0; i = i - 1)
-                // NEW: for (i = MAX_SNAKE_LENGTH-1; i > 0; i = i - 1) with condition
                 for (i = MAX_SNAKE_LENGTH-1; i > 0; i = i - 1) begin
                     if (i < snake_length) begin
                         body_x[i] <= body_x[i-1];
@@ -613,7 +575,6 @@ module snake_game_fsm (
                 pixel_x <= 0; pixel_y <= 0;
                 draw_segment <= 0;
             end
-            // ===== END CHANGE 2 =====
            
             DRAW_HEAD: begin
                 VGA_write <= 1;
