@@ -1,3 +1,11 @@
+// -----------------------
+// VERSION 2025-11-18 - SEGMENTED SNAKE
+// -----------------------
+// for DE1-SoC
+// ----------------------
+// Added visual segment separation
+// --------------------------
+
 module snake (
     input wire CLOCK_50,
     input wire [9:0] SW,
@@ -106,9 +114,6 @@ module snake (
         .VGA_SYNC_N(VGA_SYNC_N),
         .VGA_CLK(VGA_CLK));
    
-    defparam VGA.RESOLUTION = "160x120";
-    defparam VGA.MONOCHROME = "FALSE";
-    defparam VGA.BITS_PER_COLOUR_CHANNEL = 3;
     defparam VGA.BACKGROUND_IMAGE = "./MIF/background.mif";
 
     // 50 MHz → 25 MHz pixel clock
@@ -298,7 +303,7 @@ module half_second_counter (input wire clock, resetn, output wire tick);
     `ifdef SIMULATION
         localparam MAX_COUNT = 10 - 1;
     `else
-        localparam MAX_COUNT = 15000000;
+        localparam MAX_COUNT = 20000000;
     `endif
 
     reg [24:0] count = MAX_COUNT;
@@ -316,7 +321,7 @@ module half_second_counter (input wire clock, resetn, output wire tick);
 endmodule
 
 //---------------------------------------------------
-// Snake Game FSM with Full Screen Support
+// Snake Game FSM with Segmented Body Drawing
 //---------------------------------------------------
 module snake_game_fsm (
     input wire Resetn, Clock,
@@ -332,18 +337,22 @@ module snake_game_fsm (
 );
 
     localparam XSCREEN = 160, YSCREEN = 120;
-    localparam SNAKE_SIZE = 4, SNAKE_LENGTH = 8;
+    localparam SNAKE_SIZE = 4, SNAKE_LENGTH = 3;
     localparam FOOD_SIZE = 4;
     localparam VGA_WIDTH = 640, VGA_HEIGHT = 480;
     localparam SCALE = 4;
-    localparam SNAKE_COLOR = 9'b000_010_000;  // Green
+    localparam SNAKE_COLOR = 9'b000_000_111;  // green
     localparam FOOD_COLOR = 9'b111_000_000;   // Red
-    localparam BG_COLOR = 9'b0;
+    localparam BG_COLOR = 9'b000001000; // brown
     localparam MAX_SNAKE_LENGTH = 64;  // Maximum possible snake length
+    
+    // Segment separation: 3/4 of segment is colored, 1/4 is gap
+    localparam SEGMENT_GAP = 4;  // Gap size in VGA pixels (1 pixel in grid space)
 
-    localparam INIT=0, WAIT=1, CHECK_COLLISION=2, ERASE_TAIL=3, ERASE_DONE=4, MOVE=5,
-               DRAW_HEAD=6, DRAW_DONE=7, DRAW_FOOD=8, DRAW_FOOD_DONE=9,
-               ERASE_FOOD=10, ERASE_FOOD_DONE=11, GAME_OVER_STATE=12;
+    localparam INIT=0, CLEAR_SCREEN=1, CLEAR_SCREEN_DONE=2, WAIT=3,
+               CHECK_COLLISION=4, ERASE_TAIL=5, ERASE_DONE=6, MOVE=7,
+               DRAW_HEAD=8, DRAW_DONE=9, DRAW_FOOD=10, DRAW_FOOD_DONE=11,
+               ERASE_FOOD=12, ERASE_FOOD_DONE=13, GAME_OVER_STATE=14;
     localparam DIR_RIGHT=0, DIR_LEFT=1, DIR_DOWN=2, DIR_UP=3;
      
     reg [7:0] body_x [0:MAX_SNAKE_LENGTH-1];
@@ -356,10 +365,11 @@ module snake_game_fsm (
     // Pixel counters for drawing (support full VGA resolution)
     reg [9:0] pixel_x = 0;  // 0-639
     reg [8:0] pixel_y = 0;  // 0-479
-    reg [6:0] draw_segment = 0;  // Changed to 7 bits to support up to 64 segments
+    reg [6:0] draw_segment = 0;
     reg [7:0] next_x;
     reg [6:0] next_y;
     reg collision;
+	 reg in_gap;
    
     // Dynamic snake length
     reg [6:0] snake_length = 8;  // Start with length 8
@@ -380,8 +390,8 @@ module snake_game_fsm (
             lfsr <= {lfsr[14:0], feedback};
     end
 
-    wire [7:0] X_INIT = XSCREEN >> 1;  // Should be 80
-    wire [6:0] Y_INIT = YSCREEN >> 1;  // Should be 60
+    wire [7:0] X_INIT = XSCREEN >> 1;
+    wire [6:0] Y_INIT = YSCREEN >> 1;
 
     integer i;
 
@@ -412,7 +422,7 @@ module snake_game_fsm (
             food_eaten <= 0;
             food_x <= 100;
             food_y <= 80;
-            snake_length <= 8;  // Reset to initial length
+            snake_length <= 8;
             for (i = 0; i < MAX_SNAKE_LENGTH; i = i + 1) begin
                 body_x[i] <= X_INIT - (i * SNAKE_SIZE);
                 body_y[i] <= Y_INIT;
@@ -422,9 +432,31 @@ module snake_game_fsm (
             VGA_write <= 0;
         end else case (state)
             INIT: begin
-                // Skip screen clearing - let background show through
-                state <= DRAW_FOOD;
+                state <= CLEAR_SCREEN;
                 pixel_x <= 0; pixel_y <= 0;
+            end
+                       
+            CLEAR_SCREEN: begin
+                VGA_x <= pixel_x;
+                VGA_y <= pixel_y;
+                VGA_color <= BG_COLOR;
+                VGA_write <= 1;
+               
+                if (pixel_x == VGA_WIDTH-1) begin
+                    pixel_x <= 0;
+                    if (pixel_y == VGA_HEIGHT-1)
+                        state <= CLEAR_SCREEN_DONE;
+                    else
+                        pixel_y <= pixel_y + 1;
+                end else
+                    pixel_x <= pixel_x + 1;
+            end
+           
+            CLEAR_SCREEN_DONE: begin
+                VGA_write <= 0;
+                state <= DRAW_FOOD;
+                pixel_x <= 0;
+                pixel_y <= 0;
             end
            
             DRAW_FOOD: begin
@@ -459,8 +491,7 @@ module snake_game_fsm (
            
             CHECK_COLLISION: begin
                 // Calculate next head position
-               
-               next_x = body_x[0];
+                next_x = body_x[0];
                 next_y = body_y[0];
                 collision = 0;
                
@@ -468,27 +499,27 @@ module snake_game_fsm (
                 case (direction)
                     DIR_RIGHT: begin
                         next_x = body_x[0] + SNAKE_SIZE;
-                        if (next_x >= XSCREEN) collision = 1;  // Hit right wall
+                        if (next_x >= XSCREEN) collision = 1;
                     end
                     DIR_LEFT: begin
                         if (body_x[0] < SNAKE_SIZE)
-                            collision = 1;  // Hit left wall
+                            collision = 1;
                         else
                             next_x = body_x[0] - SNAKE_SIZE;
                     end
                     DIR_DOWN: begin
                         next_y = body_y[0] + SNAKE_SIZE;
-                        if (next_y >= YSCREEN) collision = 1;  // Hit bottom wall
+                        if (next_y >= YSCREEN) collision = 1;
                     end
                     DIR_UP: begin
                         if (body_y[0] < SNAKE_SIZE)
-                            collision = 1;  // Hit top wall
+                            collision = 1;
                         else
                             next_y = body_y[0] - SNAKE_SIZE;
                     end
                 endcase
                
-        
+                // Check self-collision (head hitting body)
                 if (!collision) begin
                     for (i = 1; i < MAX_SNAKE_LENGTH; i = i + 1) begin
                         if (i < snake_length && next_x == body_x[i] && next_y == body_y[i]) begin
@@ -497,12 +528,11 @@ module snake_game_fsm (
                     end
                 end
                
-                
+                // Check collision with food
                 if (collision) begin
                     game_over <= 1;
                     state <= GAME_OVER_STATE;
                 end else begin
-                    // Check collision with food
                     if (next_x == food_x && next_y == food_y) begin
                         food_eaten <= 1;
                         state <= ERASE_FOOD;
@@ -555,7 +585,7 @@ module snake_game_fsm (
             end
            
             ERASE_DONE: begin VGA_write <= 0; state <= MOVE; end
-
+           
             MOVE: begin
                 for (i = MAX_SNAKE_LENGTH-1; i > 0; i = i - 1) begin
                     if (i < snake_length) begin
@@ -578,9 +608,19 @@ module snake_game_fsm (
            
             DRAW_HEAD: begin
                 VGA_write <= 1;
-                VGA_color <= color;
+                
+                // Calculate if current pixel is in the gap region
+                // Gap is at the trailing edge of each segment (bottom/right depending on direction)
+                // For a 4x4 grid segment (16x16 VGA pixels), gap is the last 4 pixels
+                
+                in_gap = (pixel_x >= (SNAKE_SIZE * SCALE) - SEGMENT_GAP) || 
+                         (pixel_y >= (SNAKE_SIZE * SCALE) - SEGMENT_GAP);
+                
+                // Draw background color for gap, snake color for body
+                VGA_color <= in_gap ? BG_COLOR : color;
                 VGA_x <= body_x[draw_segment] * SCALE + pixel_x;
                 VGA_y <= body_y[draw_segment] * SCALE + pixel_y;
+                
                 if (pixel_x == (SNAKE_SIZE * SCALE) -1) begin
                     pixel_x <= 0;
                     if (pixel_y == SNAKE_SIZE * SCALE -1) begin
