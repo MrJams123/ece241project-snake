@@ -1,7 +1,7 @@
 # ece241project-snake
 Snake game project from ECE241
 
-update: 2025-11-17
+update: 2025-11-19
 
 To play:
 
