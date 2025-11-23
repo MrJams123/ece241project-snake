@@ -1,9 +1,9 @@
 // -----------------------
-// VERSION 2025-11-18 - SEGMENTED SNAKE
+// VERSION 2025-11-23 - SEGMENTED SNAKE
 // -----------------------
 // for DE1-SoC
 // ----------------------
-// Added visual segment separation
+// Added game over red screen (DOESNT WORK)
 // --------------------------
 
 module snake (
@@ -303,7 +303,7 @@ module half_second_counter (input wire clock, resetn, output wire tick);
     `ifdef SIMULATION
         localparam MAX_COUNT = 10 - 1;
     `else
-        localparam MAX_COUNT = 20000000;
+        localparam MAX_COUNT = 10_000_000;
     `endif
 
     reg [24:0] count = MAX_COUNT;
@@ -344,6 +344,7 @@ module snake_game_fsm (
     localparam SNAKE_COLOR = 9'b000_000_111;  // green
     localparam FOOD_COLOR = 9'b111_000_000;   // Red
     localparam BG_COLOR = 9'b000001000; // brown
+	 localparam GAME_OVER_BG_COLOR = 9'b111_000_000; // red 
     localparam MAX_SNAKE_LENGTH = 64;  // Maximum possible snake length
     
     // Segment separation: 3/4 of segment is colored, 1/4 is gap
@@ -352,7 +353,7 @@ module snake_game_fsm (
     localparam INIT=0, CLEAR_SCREEN=1, CLEAR_SCREEN_DONE=2, WAIT=3,
                CHECK_COLLISION=4, ERASE_TAIL=5, ERASE_DONE=6, MOVE=7,
                DRAW_HEAD=8, DRAW_DONE=9, DRAW_FOOD=10, DRAW_FOOD_DONE=11,
-               ERASE_FOOD=12, ERASE_FOOD_DONE=13, GAME_OVER_STATE=14;
+               ERASE_FOOD=12, ERASE_FOOD_DONE=13, GAME_OVER_STATE=14, GAME_OVER_STATE_DONE=15;
     localparam DIR_RIGHT=0, DIR_LEFT=1, DIR_DOWN=2, DIR_UP=3;
      
     reg [7:0] body_x [0:MAX_SNAKE_LENGTH-1];
@@ -642,9 +643,26 @@ module snake_game_fsm (
             end
 
             GAME_OVER_STATE: begin
-                // Stay here until reset
-                VGA_write <= 0;
+                
+					 VGA_x <= pixel_x;
+                VGA_y <= pixel_y;
+                VGA_color <= GAME_OVER_BG_COLOR;
+                VGA_write <= 1;
+               
+                if (pixel_x == VGA_WIDTH-1) begin
+                    pixel_x <= 0;
+                    if (pixel_y == VGA_HEIGHT-1)
+                        state <= GAME_OVER_STATE_DONE;
+                    else
+                        pixel_y <= pixel_y + 1;
+                end else
+                    pixel_x <= pixel_x + 1;
             end
+				
+				GAME_OVER_STATE_DONE: begin
+					// Stay here until reset
+					VGA_write <= 0;
+				end
            
             default: state <= INIT;
         endcase
