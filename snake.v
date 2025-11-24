@@ -1,9 +1,11 @@
 // -----------------------
-// VERSION 2025-11-23 - SEGMENTED SNAKE
+// VERSION 2025-11-24 - SEGMENTED SNAKE WITH SPEED CONTROL
 // -----------------------
 // for DE1-SoC
 // ----------------------
-// Added game over red screen (DOESNT WORK)
+// Added game over red screen
+// Snake starts with 2 segments
+// Speed increases from 25M to 7M clock cycles
 // --------------------------
 
 module snake (
@@ -57,11 +59,29 @@ module snake (
         .move_right(move_right)
     );
 
-    // Half-Second Tick
+    // Speed control
+    reg [24:0] speed_count = 25_000_000;  // Start slow
+    wire speed_increase;
+    localparam MIN_SPEED = 7_000_000;
+    localparam SPEED_DECREMENT = 1_000_000;  // Decrease by 1M each fruit
+
+    always @(posedge CLOCK_50) begin
+        if (!resetn)
+            speed_count <= 25_000_000;
+        else if (speed_increase && speed_count > MIN_SPEED) begin
+            if (speed_count > MIN_SPEED + SPEED_DECREMENT)
+                speed_count <= speed_count - SPEED_DECREMENT;
+            else
+                speed_count <= MIN_SPEED;
+        end
+    end
+
+    // Variable Speed Tick
     wire half_sec_tick;
     half_second_counter tick_gen (
         .clock (CLOCK_50),
         .resetn (resetn),
+        .max_count_in (speed_count),
         .tick (half_sec_tick)
     );
 
@@ -87,7 +107,8 @@ module snake (
         .VGA_color (snake_color),
         .VGA_write (snake_write),
         .score (score),
-        .game_over (game_over)
+        .game_over (game_over),
+        .speed_increase (speed_increase)
     );
    
     // Game over indicator on LED
@@ -113,8 +134,6 @@ module snake (
         .VGA_BLANK_N(VGA_BLANK_N),
         .VGA_SYNC_N(VGA_SYNC_N),
         .VGA_CLK(VGA_CLK));
-   
-    defparam VGA.BACKGROUND_IMAGE = "./MIF/background.mif";
 
     // 50 MHz → 25 MHz pixel clock
     always @(posedge CLOCK_50) pixel_clk <= ~pixel_clk;
@@ -298,21 +317,27 @@ module sync (input wire D, Resetn, Clock, output reg Q);
     end
 endmodule
 
-// Half-Second Tick
-module half_second_counter (input wire clock, resetn, output wire tick);
+// Variable Speed Tick Counter
+module half_second_counter (
+    input wire clock, 
+    input wire resetn, 
+    input wire [24:0] max_count_in,
+    output wire tick
+);
     `ifdef SIMULATION
-        localparam MAX_COUNT = 10 - 1;
+        localparam DEFAULT_COUNT = 10 - 1;
     `else
-        localparam MAX_COUNT = 10_000_000;
+        localparam DEFAULT_COUNT = 25_000_000;
     `endif
 
-    reg [24:0] count = MAX_COUNT;
+    reg [24:0] count;
+    wire [24:0] max_count = (max_count_in == 0) ? DEFAULT_COUNT : max_count_in;
 
     always @(posedge clock or negedge resetn) begin
         if (!resetn)
-            count <= MAX_COUNT;
+            count <= max_count;
         else if (count == 0)
-            count <= MAX_COUNT;
+            count <= max_count;
         else
             count <= count - 1;
     end
@@ -333,7 +358,8 @@ module snake_game_fsm (
     output reg [8:0] VGA_color,
     output reg VGA_write,
     output reg [7:0] score,
-    output reg game_over
+    output reg game_over,
+    output reg speed_increase
 );
 
     localparam XSCREEN = 160, YSCREEN = 120;
@@ -344,11 +370,11 @@ module snake_game_fsm (
     localparam SNAKE_COLOR = 9'b000_000_111;  // green
     localparam FOOD_COLOR = 9'b111_000_000;   // Red
     localparam BG_COLOR = 9'b000001000; // brown
-	 localparam GAME_OVER_BG_COLOR = 9'b111_000_000; // red 
+    localparam GAME_OVER_BG_COLOR = 9'b111_000_000; // red 
     localparam MAX_SNAKE_LENGTH = 64;  // Maximum possible snake length
     
     // Segment separation: 3/4 of segment is colored, 1/4 is gap
-    localparam SEGMENT_GAP = 4;  // Gap size in VGA pixels (1 pixel in grid space)
+    localparam SEGMENT_GAP = 3;  // Gap size in VGA pixels (1 pixel in grid space)
 
     localparam INIT=0, CLEAR_SCREEN=1, CLEAR_SCREEN_DONE=2, WAIT=3,
                CHECK_COLLISION=4, ERASE_TAIL=5, ERASE_DONE=6, MOVE=7,
@@ -370,10 +396,10 @@ module snake_game_fsm (
     reg [7:0] next_x;
     reg [6:0] next_y;
     reg collision;
-	 reg in_gap;
+    reg in_gap;
    
     // Dynamic snake length
-    reg [6:0] snake_length = 8;  // Start with length 8
+    reg [6:0] snake_length = 2;  // Start with length 2
    
     // Food position
     reg [7:0] food_x;
@@ -423,7 +449,8 @@ module snake_game_fsm (
             food_eaten <= 0;
             food_x <= 100;
             food_y <= 80;
-            snake_length <= 8;
+            snake_length <= 2;
+            speed_increase <= 0;
             for (i = 0; i < MAX_SNAKE_LENGTH; i = i + 1) begin
                 body_x[i] <= X_INIT - (i * SNAKE_SIZE);
                 body_y[i] <= Y_INIT;
@@ -561,6 +588,7 @@ module snake_game_fsm (
             ERASE_FOOD_DONE: begin
                 VGA_write <= 0;
                 score <= score + 1;
+                speed_increase <= 1;  // Trigger speed increase
 
                 // Increase snake length (up to maximum)
                 if (snake_length < MAX_SNAKE_LENGTH)
@@ -588,6 +616,7 @@ module snake_game_fsm (
             ERASE_DONE: begin VGA_write <= 0; state <= MOVE; end
            
             MOVE: begin
+                speed_increase <= 0;  // Clear the speed increase signal
                 for (i = MAX_SNAKE_LENGTH-1; i > 0; i = i - 1) begin
                     if (i < snake_length) begin
                         body_x[i] <= body_x[i-1];
@@ -643,8 +672,7 @@ module snake_game_fsm (
             end
 
             GAME_OVER_STATE: begin
-                
-					 VGA_x <= pixel_x;
+                VGA_x <= pixel_x;
                 VGA_y <= pixel_y;
                 VGA_color <= GAME_OVER_BG_COLOR;
                 VGA_write <= 1;
@@ -658,11 +686,13 @@ module snake_game_fsm (
                 end else
                     pixel_x <= pixel_x + 1;
             end
-				
-				GAME_OVER_STATE_DONE: begin
-					// Stay here until reset
-					VGA_write <= 0;
-				end
+            
+            GAME_OVER_STATE_DONE: begin
+                // Stay here until reset
+                VGA_write <= 0;
+                pixel_x <= 0;
+                pixel_y <= 0;
+            end
            
             default: state <= INIT;
         endcase
