@@ -1,12 +1,6 @@
 // -----------------------
-// VERSION 2025-11-24 - SEGMENTED SNAKE WITH SPEED CONTROL
+// VERSION 2025-11-25
 // -----------------------
-// for DE1-SoC
-// ----------------------
-// Added game over red screen
-// Snake starts with 2 segments
-// Speed increases from 25M to 7M clock cycles
-// --------------------------
 
 module snake (
     input wire CLOCK_50,
@@ -43,9 +37,7 @@ module snake (
 
     wire resetn = KEY[0];
 
-    //---------------------------------------------------
     // PS/2 Keyboard Direction Control
-    //---------------------------------------------------
     wire move_up, move_down, move_left, move_right;
    
     ps2_direction_decoder PS2_DIR (
@@ -60,14 +52,14 @@ module snake (
     );
 
     // Speed control
-    reg [24:0] speed_count = 25_000_000;  // Start slow
+    reg [24:0] speed_count = 10_000_000;  // Start slow
     wire speed_increase;
-    localparam MIN_SPEED = 7_000_000;
-    localparam SPEED_DECREMENT = 1_000_000;  // Decrease by 1M each fruit
+    localparam MIN_SPEED = 1;
+    localparam SPEED_DECREMENT = 7_000_000;  // Decrease by 1M each fruit
 
     always @(posedge CLOCK_50) begin
         if (!resetn)
-            speed_count <= 25_000_000;
+            speed_count <= 10_000_000;
         else if (speed_increase && speed_count > MIN_SPEED) begin
             if (speed_count > MIN_SPEED + SPEED_DECREMENT)
                 speed_count <= speed_count - SPEED_DECREMENT;
@@ -113,6 +105,7 @@ module snake (
    
     // Game over indicator on LED
     assign LEDR[9] = game_over;
+
    
     reg [9:0] h_count = 0;
     reg [9:0] v_count = 0;
@@ -134,6 +127,7 @@ module snake (
         .VGA_BLANK_N(VGA_BLANK_N),
         .VGA_SYNC_N(VGA_SYNC_N),
         .VGA_CLK(VGA_CLK));
+              defparam VGA.BACKGROUND_IMAGE = "./MIF/background.mif";
 
     // 50 MHz → 25 MHz pixel clock
     always @(posedge CLOCK_50) pixel_clk <= ~pixel_clk;
@@ -164,9 +158,8 @@ module snake (
 
 endmodule
 
-//---------------------------------------------------
+
 // 7-Segment Hex Decoder
-//---------------------------------------------------
 module hex_decoder(
     input [3:0] hex,
     output reg [6:0] segments
@@ -194,9 +187,8 @@ module hex_decoder(
     end
 endmodule
 
-//---------------------------------------------------
+
 // PS/2 Direction Decoder with Edge Detection
-//---------------------------------------------------
 module ps2_direction_decoder (
     input wire CLOCK_50,
     input wire Resetn,
@@ -319,15 +311,15 @@ endmodule
 
 // Variable Speed Tick Counter
 module half_second_counter (
-    input wire clock, 
-    input wire resetn, 
+    input wire clock,
+    input wire resetn,
     input wire [24:0] max_count_in,
     output wire tick
 );
     `ifdef SIMULATION
         localparam DEFAULT_COUNT = 10 - 1;
     `else
-        localparam DEFAULT_COUNT = 25_000_000;
+        localparam DEFAULT_COUNT = 10_000_000;
     `endif
 
     reg [24:0] count;
@@ -345,9 +337,7 @@ module half_second_counter (
     assign tick = (count == 0);
 endmodule
 
-//---------------------------------------------------
 // Snake Game FSM with Segmented Body Drawing
-//---------------------------------------------------
 module snake_game_fsm (
     input wire Resetn, Clock,
     input wire move_up, move_down, move_left, move_right,
@@ -367,19 +357,19 @@ module snake_game_fsm (
     localparam FOOD_SIZE = 4;
     localparam VGA_WIDTH = 640, VGA_HEIGHT = 480;
     localparam SCALE = 4;
-    localparam SNAKE_COLOR = 9'b000_000_111;  // green
-    localparam FOOD_COLOR = 9'b111_000_000;   // Red
-    localparam BG_COLOR = 9'b000001000; // brown
-    localparam GAME_OVER_BG_COLOR = 9'b111_000_000; // red 
+    localparam SNAKE_COLOR = 9'b111_000_000;  // green
+      localparam FOOD_COLOR = 9'b111_000_000;   // Red
+      localparam BG_COLOR = 9'b000_000_000;     // brown
+    localparam GAME_OVER_BG_COLOR = 9'b111_000_000; // red
     localparam MAX_SNAKE_LENGTH = 64;  // Maximum possible snake length
-    
+   
     // Segment separation: 3/4 of segment is colored, 1/4 is gap
     localparam SEGMENT_GAP = 3;  // Gap size in VGA pixels (1 pixel in grid space)
 
     localparam INIT=0, CLEAR_SCREEN=1, CLEAR_SCREEN_DONE=2, WAIT=3,
                CHECK_COLLISION=4, ERASE_TAIL=5, ERASE_DONE=6, MOVE=7,
                DRAW_HEAD=8, DRAW_DONE=9, DRAW_FOOD=10, DRAW_FOOD_DONE=11,
-               ERASE_FOOD=12, ERASE_FOOD_DONE=13, GAME_OVER_STATE=14, GAME_OVER_STATE_DONE=15;
+               ERASE_FOOD=12, ERASE_FOOD_DONE=13, GAME_OVER_STATE=14, DRAW_SCRATCHES=15, GAME_OVER_STATE_DONE=16;
     localparam DIR_RIGHT=0, DIR_LEFT=1, DIR_DOWN=2, DIR_UP=3;
      
     reg [7:0] body_x [0:MAX_SNAKE_LENGTH-1];
@@ -409,6 +399,8 @@ module snake_game_fsm (
     // LFSR for random food position
     reg [15:0] lfsr = 16'hACE1;
     wire feedback = lfsr[15] ^ lfsr[13] ^ lfsr[12] ^ lfsr[10];
+      
+       reg is_scratch;
    
     always @(posedge Clock) begin
         if (!Resetn)
@@ -436,7 +428,7 @@ module snake_game_fsm (
 
     // Color
     always @(posedge Clock) begin
-        if (!Resetn) color <= SNAKE_COLOR;
+        if (!Resetn) color <= BG_COLOR;
         else if (new_color != 0) color <= new_color;
     end
 
@@ -638,19 +630,19 @@ module snake_game_fsm (
            
             DRAW_HEAD: begin
                 VGA_write <= 1;
-                
+               
                 // Calculate if current pixel is in the gap region
                 // Gap is at the trailing edge of each segment (bottom/right depending on direction)
                 // For a 4x4 grid segment (16x16 VGA pixels), gap is the last 4 pixels
-                
-                in_gap = (pixel_x >= (SNAKE_SIZE * SCALE) - SEGMENT_GAP) || 
+               
+                in_gap = (pixel_x >= (SNAKE_SIZE * SCALE) - SEGMENT_GAP) ||
                          (pixel_y >= (SNAKE_SIZE * SCALE) - SEGMENT_GAP);
-                
+               
                 // Draw background color for gap, snake color for body
-                VGA_color <= in_gap ? BG_COLOR : color;
+                VGA_color <= in_gap ? BG_COLOR : SNAKE_COLOR;
                 VGA_x <= body_x[draw_segment] * SCALE + pixel_x;
                 VGA_y <= body_y[draw_segment] * SCALE + pixel_y;
-                
+               
                 if (pixel_x == (SNAKE_SIZE * SCALE) -1) begin
                     pixel_x <= 0;
                     if (pixel_y == SNAKE_SIZE * SCALE -1) begin
@@ -680,13 +672,40 @@ module snake_game_fsm (
                 if (pixel_x == VGA_WIDTH-1) begin
                     pixel_x <= 0;
                     if (pixel_y == VGA_HEIGHT-1)
-                        state <= GAME_OVER_STATE_DONE;
+                        state <= DRAW_SCRATCHES;
                     else
                         pixel_y <= pixel_y + 1;
                 end else
                     pixel_x <= pixel_x + 1;
             end
-            
+                        
+                        DRAW_SCRATCHES: begin
+                               VGA_write <= 1;
+                               VGA_x <= pixel_x;
+                               VGA_y <= pixel_y;
+                              
+                               // Define scratch areas (diagonal lines)
+                               is_scratch = 0;
+                               if ((pixel_x >= pixel_y - 160) && (pixel_x <= pixel_y - 140))
+                                      is_scratch = 1;
+                               if ((pixel_x >= pixel_y - 10) && (pixel_x <= pixel_y + 10))
+                                      is_scratch = 1;
+                               if ((pixel_x >= pixel_y + 140) && (pixel_x <= pixel_y + 160))
+                                      is_scratch = 1;
+                              
+                               VGA_color <= is_scratch ? 9'b000_000_000 : GAME_OVER_BG_COLOR;
+                              
+                               if (pixel_x == VGA_WIDTH - 1) begin
+                                      pixel_x <= 0;
+                                      if (pixel_y == VGA_HEIGHT - 1)
+                                                state <= GAME_OVER_STATE_DONE;
+                                      else
+                                                pixel_y <= pixel_y + 1;
+                               end else
+                                      pixel_x <= pixel_x + 1;
+                        end
+
+           
             GAME_OVER_STATE_DONE: begin
                 // Stay here until reset
                 VGA_write <= 0;
